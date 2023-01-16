@@ -2,14 +2,20 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 #https://spark.apache.org/docs/latest/sql-ref-datatypes.html
-from pyspark.sql.types import StructType,StructField, StringType, LongType 
+from pyspark.sql.types import StructType,StructField, StringType, LongType
+from pyspark.sql.functions import current_timestamp, current_date
 
 
 # SparkSession for dataframes and datasets
 # SparkContext for RDD
 
 # init spark session
-spark = SparkSession.builder.getOrCreate()
+spark = (SparkSession
+        .builder
+        .config("spark.memory.offHeap.enabled","true")
+        .config("spark.memory.offHeap.size","100mb")
+        .config("spark.sql.execution.arrow.pyspark.enabled", "true")
+        .getOrCreate())
 
 # schema
 schema = (
@@ -30,6 +36,9 @@ schema = (
 # load json data
 df = spark.read.json("data/device/device_*json",schema=schema)
 
+# cache if gonna use it more than once
+df.cache()
+
 # schema
 df.printSchema()
 
@@ -42,7 +51,7 @@ cols = len(df.columns)
 print("DataFrame Dimensions: {}x{}".format(rows,cols))
 
 # show dataframe
-df.show()
+df.show(truncate=False)
 
 # select columns
 (
@@ -58,6 +67,17 @@ df.show()
     .show(truncate=False)
 )
 
+# drop duplicates
+print("Non-duplicates lines",
+    df.dropDuplicates().count()
+)
+
+# describe
+df.describe().show(truncate=False)
+
+# processed at
+df = df.withColumn("processed_at", current_timestamp())
+df = df.withColumn("load_date", current_date())
 
 
 # spark-submit base.py
