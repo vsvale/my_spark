@@ -1,9 +1,8 @@
 # import libraries
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col, mean, max, min, date_format,current_timestamp, current_date, lit, datediff, when, from_unixtime
 #https://spark.apache.org/docs/latest/sql-ref-datatypes.html
 from pyspark.sql.types import StructType,StructField, StringType, LongType
-from pyspark.sql.functions import current_timestamp, current_date
 
 
 # SparkSession for dataframes and datasets
@@ -50,21 +49,42 @@ rows = df.count()
 cols = len(df.columns)
 print("DataFrame Dimensions: {}x{}".format(rows,cols))
 
-# show dataframe
-df.show(truncate=False)
-
 # select columns
 (
     df
     .select(
         col("manufacturer"),
         col("model"),
-        col("platform")
+        col("platform").alias("type")
         )
     .filter(col("manufacturer")=="Xiamomi")
-    .groupBy(col("manufacturer"))
+    .groupBy(col("manufacturer"),col("model"))
     .count()
+    .orderBy("count",ascending=False)
+    .limit(10)
     .show(truncate=False)
+)
+
+# transformations
+(
+    df.select(
+        mean("id"),
+        max("id"),
+        min("id"),
+        date_format(current_timestamp(),'yyyMM'),
+        date_format(current_timestamp(),'yyyMM').cast('int').alias('anomes'),
+        lit(None).alias("Null")
+        )
+        .show()
+)
+
+(
+    df.select(
+        datediff(from_unixtime(col('dt_current_timestamp')),current_timestamp()).alias('diffdates'),
+        when(col('manufacturer').isNull(),lit('N/A')).otherwise(col('manufacturer')),
+        when(col('manufacturer').isNotNull(),col('manufacturer')).otherwise(col('N/A'))
+    )
+    .show()
 )
 
 # drop duplicates
@@ -74,6 +94,9 @@ print("Non-duplicates lines",
 
 # describe
 df.describe().show(truncate=False)
+
+# execution plan
+df.explain(mode="formatted")
 
 # processed at
 df = df.withColumn("processed_at", current_timestamp())
