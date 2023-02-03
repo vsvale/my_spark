@@ -1,6 +1,6 @@
 # import libraries
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, mean, max, min, date_format,current_timestamp, current_date, lit, datediff, when, from_unixtime
+from pyspark.sql.functions import col, mean, max, min, date_format,current_timestamp, current_date, lit, datediff, when, from_unixtime, monotonically_increasing_id,greatest, round, year, first, last
 #https://spark.apache.org/docs/latest/sql-ref-datatypes.html
 from pyspark.sql.types import StructType,StructField, StringType, LongType
 
@@ -14,9 +14,10 @@ spark = (SparkSession
         .config("spark.memory.offHeap.enabled","true")
         .config("spark.memory.offHeap.size","100mb")
         .config("spark.sql.execution.arrow.pyspark.enabled", "true")
+        .config("spark.sql.files.maxPartitionBytes","128Mb")
         .getOrCreate())
 
-# schema
+# Even read.json infer schema, is good practice to enforce a schema
 schema = (
     StructType([
         StructField("build_number",LongType(),True),
@@ -32,16 +33,15 @@ schema = (
     ])
 )
 
-# load json data
+# using * wild card to read all files with same pattern
 df = spark.read.json("data/device/device_*json",schema=schema)
 
 # cache if gonna use it more than once
 df.cache()
 
-# schema
 df.printSchema()
 
-# dtypes
+# verify data types
 print(df.dtypes)
 
 # dimensions
@@ -49,15 +49,20 @@ rows = df.count()
 cols = len(df.columns)
 print("DataFrame Dimensions: {}x{}".format(rows,cols))
 
-# select columns
+
+# https://github.com/palantir/pyspark-style-guide
+# first df select, alias, trim, filter
+# secound df add columns and transform
+# third df join and drop columns
+is_xiamomi = (col("manufacturer")=="Xiamomi")
 (
     df
     .select(
-        col("manufacturer"),
-        col("model"),
+        "manufacturer",
+        "model",
         col("platform").alias("type")
         )
-    .filter(col("manufacturer")=="Xiamomi")
+    .filter(is_xiamomi)
     .groupBy(col("manufacturer"),col("model"))
     .count()
     .orderBy("count",ascending=False)
@@ -65,7 +70,8 @@ print("DataFrame Dimensions: {}x{}".format(rows,cols))
     .show(truncate=False)
 )
 
-# transformations
+# https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/functions.html
+
 (
     df.select(
         mean("id"),
@@ -73,19 +79,39 @@ print("DataFrame Dimensions: {}x{}".format(rows,cols))
         min("id"),
         date_format(current_timestamp(),'yyyMM'),
         date_format(current_timestamp(),'yyyMM').cast('int').alias('anomes'),
-        lit(None).alias("Null")
+        year(current_timestamp()),
+        lit(None).alias("Null"),
+        first('id',ignorenulls=True),
+        last('id',ignorenulls=True)
         )
         .show()
 )
 
 (
     df.select(
+        monotonically_increasing_id().alias("autogenid"),
         datediff(from_unixtime(col('dt_current_timestamp')),current_timestamp()).alias('diffdates'),
-        when(col('manufacturer').isNull(),lit('N/A')).otherwise(col('manufacturer')),
-        when(col('manufacturer').isNotNull(),col('manufacturer')).otherwise(col('N/A'))
+        when(col('manufacturer').isNull(),lit(None)).otherwise(col('manufacturer')),
+        when(col('manufacturer').isNotNull(),col('manufacturer')).otherwise(lit(None)),
+        greatest("id","build_number","version","user_id").alias("highest_number"),
+        round(col("version"),0)
     )
     .show()
 )
+
+# filter and when max 3 expressions at most
+has_null = ((col('manufacturer').isNull()) | (col('version').isNull()))
+is_bad = (has_null | is_xiamomi)
+
+(
+    df.select(
+        when(is_bad,'N/A')
+    )
+    .show()
+)
+
+# never sue withCOlumn to rename or cast
+df.withColumn("rank",when(col("manufacturer")=="Xiamomi",lit("low")).otherwise(lit("normal")))
 
 # drop duplicates
 print("Non-duplicates lines",
@@ -101,6 +127,35 @@ df.explain(mode="formatted")
 # processed at
 df = df.withColumn("processed_at", current_timestamp())
 df = df.withColumn("load_date", current_date())
+
+# in join avoid join explosion and right joins
+
+subscription = spark.read.json("data/device/subscription_*json",schema=schema)
+
+
+# Use function to represent atomic logic steps
+# One function should not be over 70 lines
+def join_device_subscription(df, subscription):
+    device = df.alias('device').select('manufacturer','platform','id')
+    
+    subscription = subscription.alias('subscription').select('id','plan')
+
+    devic_subs = device.join(subscription, 'id', how='inner')
+
+    devic_subs = (
+    devic_subs.select(
+        col('device.manufacturer').alias('manufacturer'),
+        col('device.platform').alias('platform'),
+        col('subscription.plan').alias('plan')
+    )   
+    )
+    return devic_subs
+
+
+
+
+
+
 
 
 # spark-submit base.py

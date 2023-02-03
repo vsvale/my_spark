@@ -1,4 +1,5 @@
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import expr
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -12,3 +13,5 @@ print("DataFrame Dimensions: {}x{}".format(rows,cols))
 
 # select Expr
 df.selectExpr("manufacturer","model","platform as type").show()
+
+df.select(expr("CASE WHEN manufacturer = 'Xiamomi' THEN 1 ELSE 0 END").alias('Xiamomi')).show()

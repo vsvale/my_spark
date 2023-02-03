@@ -8,6 +8,7 @@ spark = (SparkSession
         .getOrCreate())
 
 import pyspark.pandas as ps
+# https://spark.apache.org/docs/3.2.1/api/python/user_guide/pandas_on_spark/best_practices.html
 
 df_device = ps.read_json("data/device/*.json")
 df_subscription = ps.read_json("data/subscription/*.json")
