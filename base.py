@@ -152,10 +152,14 @@ def join_device_subscription(df, subscription):
     return devic_subs
 
 
+#spark-submit --deploy-mode client --master local \
+#--driver-memory 1GB --driver-cores 2 --num-executors 2 --executor-memory 1GB --executor-cores 1 --total-executor-cores 2 \
+#--conf "spark.sql.shuffle.partitions=20000" \
+#--jars "dependency1.jar" \
+#--class com.sparkbyexamples.WordCoutExample spark-by-examples.jar
 
 
+#base.py
 
-
-
-
-# spark-submit base.py
+# deploy-mode cluster | client (locally, default)
+# master yarn | mesos://host:port| spark://host:port | k8s://host:port | local
