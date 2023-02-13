@@ -39,6 +39,7 @@ df = spark.read.json("data/device/device_*json",schema=schema)
 # cache if gonna use it more than once
 df.cache()
 
+# printSchema
 df.printSchema()
 
 # verify data types
@@ -49,6 +50,8 @@ rows = df.count()
 cols = len(df.columns)
 print("DataFrame Dimensions: {}x{}".format(rows,cols))
 
+# number of partitions
+df.rdd.getNumPartitions()
 
 # https://github.com/palantir/pyspark-style-guide
 # first df select, alias, trim, filter
@@ -93,6 +96,7 @@ is_xiamomi = (col("manufacturer")=="Xiamomi")
         datediff(from_unixtime(col('dt_current_timestamp')),current_timestamp()).alias('diffdates'),
         when(col('manufacturer').isNull(),lit(None)).otherwise(col('manufacturer')),
         when(col('manufacturer').isNotNull(),col('manufacturer')).otherwise(lit(None)),
+        when(col('manufacturer')=="Xiamomi",lit(1)).otherwise(lit(None)),
         greatest("id","build_number","version","user_id").alias("highest_number"),
         round(col("version"),0)
     )
@@ -140,7 +144,7 @@ def join_device_subscription(df, subscription):
     
     subscription = subscription.alias('subscription').select('id','plan')
 
-    devic_subs = device.join(subscription, 'id', how='inner')
+    devic_subs = device.join(subscription, col('device.id')==col('subscription.id'), how='inner')
 
     devic_subs = (
     devic_subs.select(
@@ -152,13 +156,17 @@ def join_device_subscription(df, subscription):
     return devic_subs
 
 
+# Save as 1 file
+df.repartition(1).write.csv(path='csv',mode='overwrite',sep=';',header=True)
+
+# Save as Orc File
+df.write.orc(path='orc',mode='overwrite')
+
+
 #spark-submit --deploy-mode client --master local \
 #--driver-memory 1GB --driver-cores 2 --num-executors 2 --executor-memory 1GB --executor-cores 1 --total-executor-cores 2 \
 #--conf "spark.sql.shuffle.partitions=20000" \
 #--jars "dependency1.jar" \
-#--class com.sparkbyexamples.WordCoutExample spark-by-examples.jar
-
-
 #base.py
 
 # deploy-mode cluster | client (locally, default)
